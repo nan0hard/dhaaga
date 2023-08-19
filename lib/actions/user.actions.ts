@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import User from "../models/user.model";
 import { connectToDB } from "../mongoose";
+import Dhaaga from "../models/dhaaga.model";
 
 interface updateUserProps {
 	userId: string;
@@ -46,5 +47,27 @@ export async function fetchUser(userId: string) {
 		// .populate();
 	} catch (error: any) {
 		throw new Error(`Failed to fetch User Details: ${error.message}`);
+	}
+}
+
+export async function fetchUserPosts(userId: string) {
+	try {
+		connectToDB();
+
+		// Find all Dhaagas created by user with the given userId
+
+		const dhaagas = await User.findOne({ id: userId }).populate({
+			path: "dhaagas",
+			model: Dhaaga,
+			populate: {
+				path: "children",
+				model: Dhaaga,
+				populate: { path: "author", model: User, select: "name image id" },
+			},
+		});
+
+		return dhaagas;
+	} catch (error: any) {
+		throw new Error(`Failed to fetch User posts: ${error.message}`);
 	}
 }

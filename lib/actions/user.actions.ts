@@ -122,3 +122,31 @@ export async function fetchUsers({
 		throw new Error(`Failed to fetch users : ${error.message}`);
 	}
 }
+
+export async function getActivity(userId: string) {
+	try {
+		connectToDB();
+
+		// Find all Dhaagas created by user
+		const userDhaagas = await Dhaaga.find({ author: userId });
+
+		// Collect all the child dhaaga ids(replies) from the 'children' field
+
+		const childDhaagaIds = userDhaagas.reduce((acc, userDhaaga) => {
+			return acc.concat(userDhaaga.children);
+		}, []);
+
+		const replies = await Dhaaga.find({
+			_id: { $in: childDhaagaIds },
+			author: { $ne: userId },
+		}).populate({
+			path: "author",
+			model: User,
+			select: "name image _id",
+		});
+
+		return replies;
+	} catch (error: any) {
+		throw new Error(`Failed to fetch any Notifications: ${error.message}`);
+	}
+}

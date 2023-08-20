@@ -1,10 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { connectToDB } from "../mongoose";
 
 import Dhaaga from "../models/dhaaga.model";
 import User from "../models/user.model";
-import { revalidatePath } from "next/cache";
+import Community from "../models/community.model";
 
 interface createDhaagaProps {
 	text: string;
@@ -22,10 +24,15 @@ export async function createDhaaga({
 	try {
 		connectToDB();
 
+		const communityIdObject = await Community.findOne(
+			{ id: communityId },
+			{ _id: 1 }
+		);
+
 		const createdDhaaga = await Dhaaga.create({
 			text,
 			author,
-			communityId: null,
+			community: communityIdObject,
 		});
 
 		// Update User Model
@@ -33,9 +40,16 @@ export async function createDhaaga({
 			$push: { dhaagas: createdDhaaga._id },
 		});
 
+		if (communityIdObject) {
+			// Update Community Model
+			await Community.findByIdAndUpdate(communityIdObject, {
+				$push: { dhaagas: createdDhaaga._id },
+			});
+		}
+
 		revalidatePath(path);
 	} catch (error: any) {
-		throw new Error(`Message while creating Dhaaga: ${error.message}`);
+		throw new Error(`Error while creating Dhaaga: ${error.message}`);
 	}
 }
 
@@ -54,6 +68,7 @@ export async function fetchDhaagas(pageNumber = 1, pageSize = 20) {
 			.skip(skipAmount)
 			.limit(pageSize)
 			.populate({ path: "author", model: User })
+			.populate({ path: "community", model: Community })
 			.populate({
 				path: "children",
 				populate: {
@@ -145,5 +160,73 @@ export async function addCommentToDhaaga(
 		revalidatePath(path);
 	} catch (error: any) {
 		throw new Error(`Error adding comment to Dhaaga : ${error.message}`);
+	}
+}
+
+async function fetchAllChildDhaagas(dhaagaId: string): Promise<any[]> {
+	const childDhaagas = await Dhaaga.find({ parentId: dhaagaId });
+
+	const descendantDhaagas = [];
+	for (const childDhaaga of childDhaagas) {
+		const descendants = await fetchAllChildDhaagas(childDhaaga._id);
+		descendantDhaagas.push(childDhaaga, ...descendants);
+	}
+
+	return descendantDhaagas;
+}
+
+export async function deleteDhaaga(id: string, path: string): Promise<void> {
+	try {
+		connectToDB();
+
+		// Find the dhaaga to be deleted (the main dhaaga)
+		const mainDhaaga = await Dhaaga.findById(id).populate("author community");
+
+		if (!mainDhaaga) {
+			throw new Error("Dhaaga not found");
+		}
+
+		// Fetch all child dhaagas and their descendants recursively
+		const descendantDhaagas = await fetchAllChildDhaagas(id);
+
+		// Get all descendant dhaaga IDs including the main dhaaga ID and child dhaaga IDs
+		const descendantDhaagaIds = [
+			id,
+			...descendantDhaagas.map((dhaaga) => dhaaga._id),
+		];
+
+		// Extract the authorIds and communityIds to update User and Community models respectively
+		const uniqueAuthorIds = new Set(
+			[
+				...descendantDhaagas.map((dhaaga) => dhaaga.author?._id?.toString()), // Use optional chaining to handle possible undefined values
+				mainDhaaga.author?._id?.toString(),
+			].filter((id) => id !== undefined)
+		);
+
+		const uniqueCommunityIds = new Set(
+			[
+				...descendantDhaagas.map((dhaaga) => dhaaga.community?._id?.toString()), // Use optional chaining to handle possible undefined values
+				mainDhaaga.community?._id?.toString(),
+			].filter((id) => id !== undefined)
+		);
+
+		// Recursively delete child Dhaaga and their descendants
+		await Dhaaga.deleteMany({ _id: { $in: descendantDhaagas } });
+
+		// Update User model
+		await User.updateMany(
+			{ _id: { $in: Array.from(uniqueAuthorIds) } },
+			{ $pull: { dhaaga: { $in: descendantDhaagas } } }
+		);
+
+		// Update Community model
+		await Community.updateMany(
+			{ _id: { $in: Array.from(uniqueCommunityIds) } },
+			{ $pull: { dhaaga: { $in: descendantDhaagaIds } } }
+		);
+
+		revalidatePath(path);
+	} catch (error: any) {
+		throw new Error(`Failed to delete dhaaga: ${error.message}`);
 	}
 }

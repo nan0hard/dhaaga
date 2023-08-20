@@ -3,9 +3,11 @@
 import { FilterQuery, SortOrder } from "mongoose";
 import { revalidatePath } from "next/cache";
 
-import User from "../models/user.model";
 import { connectToDB } from "../mongoose";
+
+import User from "../models/user.model";
 import Dhaaga from "../models/dhaaga.model";
+import Community from "../models/community.model";
 
 interface updateUserProps {
 	userId: string;
@@ -45,8 +47,10 @@ export async function fetchUser(userId: string) {
 	try {
 		connectToDB();
 
-		return await User.findOne({ id: userId });
-		// .populate();
+		return await User.findOne({ id: userId }).populate({
+			path: "communities",
+			model: Community,
+		});
 	} catch (error: any) {
 		throw new Error(`Failed to fetch User Details: ${error.message}`);
 	}
@@ -61,11 +65,22 @@ export async function fetchUserPosts(userId: string) {
 		const dhaagas = await User.findOne({ id: userId }).populate({
 			path: "dhaagas",
 			model: Dhaaga,
-			populate: {
-				path: "children",
-				model: Dhaaga,
-				populate: { path: "author", model: User, select: "name image id" },
-			},
+			populate: [
+				{
+					path: "community",
+					model: Community,
+					select: "name id _id image", // Select name and _id from Community Model
+				},
+				{
+					path: "children",
+					model: Dhaaga,
+					populate: {
+						path: "author",
+						model: User,
+						select: "name image id", // Select name and id field from User model
+					},
+				},
+			],
 		});
 
 		return dhaagas;
@@ -131,7 +146,6 @@ export async function getActivity(userId: string) {
 		const userDhaagas = await Dhaaga.find({ author: userId });
 
 		// Collect all the child dhaaga ids(replies) from the 'children' field
-
 		const childDhaagaIds = userDhaagas.reduce((acc, userDhaaga) => {
 			return acc.concat(userDhaaga.children);
 		}, []);

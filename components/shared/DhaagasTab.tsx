@@ -1,6 +1,7 @@
 import { fetchUserPosts } from "@/lib/actions/user.actions";
 import { redirect } from "next/navigation";
 import DhaagaCard from "../cards/DhaagaCard";
+import { fetchCommunityPosts } from "@/lib/actions/community.actions";
 
 interface DhaagasTabProps {
 	currentUserId: string;
@@ -13,7 +14,13 @@ const DhaagasTab = async ({
 	accountId,
 	accountType,
 }: DhaagasTabProps) => {
-	let result = await fetchUserPosts(accountId);
+	let result: any;
+
+	if (accountType === "Community") {
+		result = await fetchCommunityPosts(accountId);
+	} else {
+		result = await fetchUserPosts(accountId);
+	}
 
 	if (!result) redirect("/");
 

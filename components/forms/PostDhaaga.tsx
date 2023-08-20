@@ -4,6 +4,9 @@ import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import * as z from "zod";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useOrganization } from "@clerk/nextjs";
+
 import { Button } from "../ui/button";
 import {
 	Form,
@@ -14,14 +17,13 @@ import {
 	FormMessage,
 } from "../ui/form";
 import { Textarea } from "../ui/textarea";
-import { zodResolver } from "@hookform/resolvers/zod";
-
 import { DhaagaValidation } from "@/lib/validations/dhaaga";
 import { createDhaaga } from "@/lib/actions/dhaaga.actions";
 
 const PostDhaaga = ({ userId }: { userId: string }) => {
 	const router = useRouter();
 	const pathname = usePathname();
+	const { organization } = useOrganization();
 
 	const form = useForm({
 		resolver: zodResolver(DhaagaValidation),
@@ -35,7 +37,7 @@ const PostDhaaga = ({ userId }: { userId: string }) => {
 		await createDhaaga({
 			text: values.dhaaga,
 			author: userId,
-			communityId: null,
+			communityId: organization ? organization.id : null,
 			path: pathname,
 		});
 

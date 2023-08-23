@@ -9,7 +9,7 @@ async function Page() {
 
 	// This will come once we connect with MongoDB
 	const userInfo = await fetchUser(user.id);
-	if (!userInfo.onboarded) redirect("/onboarding");
+	if (userInfo?.onboarded) redirect("/");
 
 	const userData = {
 		id: user?.id,
